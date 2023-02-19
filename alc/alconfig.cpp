@@ -330,6 +330,16 @@ const char *GetConfigValue(const char *devName, const char *blockName, const cha
 void ReadALConfig()
 {
     WCHAR buffer[MAX_PATH];
+    if(SHGetSpecialFolderPathW(nullptr, buffer, CSIDL_COMMON_APPDATA, FALSE) != FALSE)
+    {
+        std::string filepath{wstr_to_utf8(buffer)};
+        filepath += "\\alsoft.ini";
+
+        TRACE("Loading config %s...\n", filepath.c_str());
+        al::ifstream f{filepath};
+        if(f.is_open())
+            LoadConfigFromFile(f);
+    }
     if(SHGetSpecialFolderPathW(nullptr, buffer, CSIDL_APPDATA, FALSE) != FALSE)
     {
         std::string filepath{wstr_to_utf8(buffer)};
