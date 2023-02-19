@@ -1,0 +1,26 @@
+on:
+  workflow_dispatch:
+
+jobs:
+  main:
+    name: main
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: enable ccache
+        uses: hendrikmuhs/ccache-action@v1.2.8
+        with:
+          verbose: 1
+          max-size: "760M"
+      - name: update
+        run: |
+          sudo apt-get -y update
+          sudo apt-get -y upgrade
+      - name: build
+        run: ./build.sh
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: openal-soft
+          path: openalsoft.tgz
