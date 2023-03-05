@@ -15,6 +15,7 @@ jobs:
           max-size: "760M"
       - name: update
         run: |
+          sudo apt-mark hold grub-efi-amd64-signed
           sudo apt-get -y update
           sudo apt-get -y upgrade
       - name: build
