@@ -165,7 +165,7 @@ void AddActiveEffectSlots(const al::span<ALeffectslot*> auxslots, ALCcontext *co
     curarray = context->mActiveAuxSlots.exchange(newarray, std::memory_order_acq_rel);
     context->mDevice->waitForMix();
 
-    al::destroy_n(curarray->end(), curarray->size());
+    std::destroy_n(curarray->end(), curarray->size());
     delete curarray;
 }
 
@@ -204,7 +204,7 @@ void RemoveActiveEffectSlots(const al::span<ALeffectslot*> auxslots, ALCcontext 
     curarray = context->mActiveAuxSlots.exchange(newarray, std::memory_order_acq_rel);
     context->mDevice->waitForMix();
 
-    al::destroy_n(curarray->end(), curarray->size());
+    std::destroy_n(curarray->end(), curarray->size());
     delete curarray;
 }
 
@@ -289,7 +289,7 @@ void FreeEffectSlot(ALCcontext *context, ALeffectslot *slot)
     const size_t lidx{id >> 6};
     const ALuint slidx{id & 0x3f};
 
-    al::destroy_at(slot);
+    std::destroy_at(slot);
 
     context->mEffectSlotList[lidx].FreeMask |= 1_u64 << slidx;
     context->mNumEffectSlots--;
@@ -341,7 +341,7 @@ START_API_FUNC
     }
     else
     {
-        al::vector<ALuint> ids;
+        std::vector<ALuint> ids;
         ALsizei count{n};
         ids.reserve(static_cast<ALuint>(count));
         do {
@@ -383,7 +383,7 @@ START_API_FUNC
     }
     else
     {
-        auto slots = al::vector<ALeffectslot*>(static_cast<ALuint>(n));
+        auto slots = std::vector<ALeffectslot*>(static_cast<ALuint>(n));
         for(size_t i{0};i < slots.size();++i)
         {
             ALeffectslot *slot{LookupEffectSlot(context.get(), effectslots[i])};
@@ -466,7 +466,7 @@ START_API_FUNC
         context->setError(AL_INVALID_VALUE, "Playing %d effect slots", n);
     if(n <= 0) UNLIKELY return;
 
-    auto slots = al::vector<ALeffectslot*>(static_cast<ALuint>(n));
+    auto slots = std::vector<ALeffectslot*>(static_cast<ALuint>(n));
     std::lock_guard<std::mutex> _{context->mEffectSlotLock};
     for(size_t i{0};i < slots.size();++i)
     {
@@ -520,7 +520,7 @@ START_API_FUNC
         context->setError(AL_INVALID_VALUE, "Stopping %d effect slots", n);
     if(n <= 0) UNLIKELY return;
 
-    auto slots = al::vector<ALeffectslot*>(static_cast<ALuint>(n));
+    auto slots = std::vector<ALeffectslot*>(static_cast<ALuint>(n));
     std::lock_guard<std::mutex> _{context->mEffectSlotLock};
     for(size_t i{0};i < slots.size();++i)
     {
@@ -1023,11 +1023,14 @@ void UpdateAllEffectSlotProps(ALCcontext *context)
 
 EffectSlotSubList::~EffectSlotSubList()
 {
+    if(!EffectSlots)
+        return;
+
     uint64_t usemask{~FreeMask};
     while(usemask)
     {
         const int idx{al::countr_zero(usemask)};
-        al::destroy_at(EffectSlots+idx);
+        std::destroy_at(EffectSlots+idx);
         usemask &= ~(1_u64 << idx);
     }
     FreeMask = ~usemask;
@@ -1272,7 +1275,7 @@ void ALeffectslot::eax_fx_slot_load_effect(int version, ALenum altype)
 
 void ALeffectslot::eax_fx_slot_set_volume()
 {
-    const auto volume = clamp(eax_.lVolume, EAXFXSLOT_MINVOLUME, EAXFXSLOT_MAXVOLUME);
+    const auto volume = std::clamp(eax_.lVolume, EAXFXSLOT_MINVOLUME, EAXFXSLOT_MAXVOLUME);
     const auto gain = level_mb_to_gain(static_cast<float>(volume));
     eax_set_efx_slot_gain(gain);
 }

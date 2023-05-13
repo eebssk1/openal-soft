@@ -26,6 +26,7 @@
 #include <array>
 #include <atomic>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -35,21 +36,21 @@
 #include <mutex>
 #include <new>
 #include <numeric>
+#include <optional>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #include "AL/al.h"
 #include "AL/alc.h"
 #include "AL/alext.h"
 
 #include "albit.h"
-#include "albyte.h"
 #include "alc/context.h"
 #include "alc/device.h"
 #include "alc/inprogext.h"
 #include "almalloc.h"
 #include "alnumeric.h"
-#include "aloptional.h"
 #include "atomic.h"
 #include "core/except.h"
 #include "core/logging.h"
@@ -57,6 +58,8 @@
 #include "opthelpers.h"
 
 #ifdef ALSOFT_EAX
+#include <unordered_set>
+
 #include "eax/globals.h"
 #include "eax/x_ram.h"
 #endif // ALSOFT_EAX
@@ -64,14 +67,14 @@
 
 namespace {
 
-al::optional<AmbiLayout> AmbiLayoutFromEnum(ALenum layout)
+std::optional<AmbiLayout> AmbiLayoutFromEnum(ALenum layout)
 {
     switch(layout)
     {
     case AL_FUMA_SOFT: return AmbiLayout::FuMa;
     case AL_ACN_SOFT: return AmbiLayout::ACN;
     }
-    return al::nullopt;
+    return std::nullopt;
 }
 ALenum EnumFromAmbiLayout(AmbiLayout layout)
 {
@@ -83,7 +86,7 @@ ALenum EnumFromAmbiLayout(AmbiLayout layout)
     throw std::runtime_error{"Invalid AmbiLayout: "+std::to_string(int(layout))};
 }
 
-al::optional<AmbiScaling> AmbiScalingFromEnum(ALenum scale)
+std::optional<AmbiScaling> AmbiScalingFromEnum(ALenum scale)
 {
     switch(scale)
     {
@@ -91,7 +94,7 @@ al::optional<AmbiScaling> AmbiScalingFromEnum(ALenum scale)
     case AL_SN3D_SOFT: return AmbiScaling::SN3D;
     case AL_N3D_SOFT: return AmbiScaling::N3D;
     }
-    return al::nullopt;
+    return std::nullopt;
 }
 ALenum EnumFromAmbiScaling(AmbiScaling scale)
 {
@@ -106,7 +109,7 @@ ALenum EnumFromAmbiScaling(AmbiScaling scale)
 }
 
 #ifdef ALSOFT_EAX
-al::optional<EaxStorage> EaxStorageFromEnum(ALenum scale)
+std::optional<EaxStorage> EaxStorageFromEnum(ALenum scale)
 {
     switch(scale)
     {
@@ -114,7 +117,7 @@ al::optional<EaxStorage> EaxStorageFromEnum(ALenum scale)
     case AL_STORAGE_ACCESSIBLE: return EaxStorage::Accessible;
     case AL_STORAGE_HARDWARE: return EaxStorage::Hardware;
     }
-    return al::nullopt;
+    return std::nullopt;
 }
 ALenum EnumFromEaxStorage(EaxStorage storage)
 {
@@ -222,7 +225,7 @@ void FreeBuffer(ALCdevice *device, ALbuffer *buffer)
     const size_t lidx{id >> 6};
     const ALuint slidx{id & 0x3f};
 
-    al::destroy_at(buffer);
+    std::destroy_at(buffer);
 
     device->BufferList[lidx].FreeMask |= 1_u64 << slidx;
 }
@@ -277,7 +280,7 @@ ALuint SanitizeAlignment(FmtType type, ALuint align)
 
 /** Loads the specified data into the buffer, using the specified format. */
 void LoadData(ALCcontext *context, ALbuffer *ALBuf, ALsizei freq, ALuint size,
-    const FmtChannels DstChannels, const FmtType DstType, const al::byte *SrcData,
+    const FmtChannels DstChannels, const FmtType DstType, const std::byte *SrcData,
     ALbitfieldSOFT access)
 {
     if(ReadRef(ALBuf->ref) != 0 || ALBuf->MappedAccess != 0) UNLIKELY
@@ -343,7 +346,7 @@ void LoadData(ALCcontext *context, ALbuffer *ALBuf, ALsizei freq, ALuint size,
      */
     if(newsize != ALBuf->mDataStorage.size())
     {
-        auto newdata = al::vector<al::byte,16>(newsize, al::byte{});
+        auto newdata = decltype(ALBuf->mDataStorage)(newsize, std::byte{});
         if((access&AL_PRESERVE_DATA_BIT_SOFT))
         {
             const size_t tocopy{minz(newdata.size(), ALBuf->mDataStorage.size())};
@@ -437,7 +440,7 @@ void PrepareCallback(ALCcontext *context, ALbuffer *ALBuf, ALsizei freq,
 
 /** Prepares the buffer to use caller-specified storage. */
 void PrepareUserPtr(ALCcontext *context, ALbuffer *ALBuf, ALsizei freq,
-    const FmtChannels DstChannels, const FmtType DstType, al::byte *sdata, const ALuint sdatalen)
+    const FmtChannels DstChannels, const FmtType DstType, std::byte *sdata, const ALuint sdatalen)
 {
     if(ReadRef(ALBuf->ref) != 0 || ALBuf->MappedAccess != 0) UNLIKELY
         return context->setError(AL_INVALID_OPERATION, "Modifying storage for in-use buffer %u",
@@ -506,7 +509,7 @@ void PrepareUserPtr(ALCcontext *context, ALbuffer *ALBuf, ALsizei freq,
 #endif
 
     decltype(ALBuf->mDataStorage){}.swap(ALBuf->mDataStorage);
-    ALBuf->mData = {static_cast<al::byte*>(sdata), sdatalen};
+    ALBuf->mData = {static_cast<std::byte*>(sdata), sdatalen};
 
 #ifdef ALSOFT_EAX
     eax_x_ram_clear(*context->mALDevice, *ALBuf);
@@ -536,7 +539,7 @@ void PrepareUserPtr(ALCcontext *context, ALbuffer *ALBuf, ALsizei freq,
 
 
 struct DecompResult { FmtChannels channels; FmtType type; };
-al::optional<DecompResult> DecomposeUserFormat(ALenum format)
+std::optional<DecompResult> DecomposeUserFormat(ALenum format)
 {
     struct FormatMap {
         ALenum format;
@@ -624,9 +627,9 @@ al::optional<DecompResult> DecomposeUserFormat(ALenum format)
     for(const auto &fmt : UserFmtList)
     {
         if(fmt.format == format)
-            return al::make_optional<DecompResult>({fmt.channels, fmt.type});
+            return DecompResult{fmt.channels, fmt.type};
     }
-    return al::nullopt;
+    return std::nullopt;
 }
 
 } // namespace
@@ -661,7 +664,7 @@ START_API_FUNC
         /* Store the allocated buffer IDs in a separate local list, to avoid
          * modifying the user storage in case of failure.
          */
-        al::vector<ALuint> ids;
+        std::vector<ALuint> ids;
         ids.reserve(static_cast<ALuint>(n));
         do {
             ALbuffer *buffer{AllocBuffer(device)};
@@ -767,7 +770,7 @@ START_API_FUNC
         else
         {
             LoadData(context.get(), albuf, freq, static_cast<ALuint>(size), usrfmt->channels,
-                usrfmt->type, static_cast<const al::byte*>(data), flags);
+                usrfmt->type, static_cast<const std::byte*>(data), flags);
         }
     }
 }
@@ -796,7 +799,7 @@ START_API_FUNC
         return context->setError(AL_INVALID_ENUM, "Invalid format 0x%04x", format);
 
     PrepareUserPtr(context.get(), albuf, freq, usrfmt->channels, usrfmt->type,
-        static_cast<al::byte*>(data), static_cast<ALuint>(size));
+        static_cast<std::byte*>(data), static_cast<ALuint>(size));
 }
 END_API_FUNC
 
@@ -1463,7 +1466,7 @@ START_API_FUNC
     else switch(param)
     {
     case AL_BUFFER_CALLBACK_FUNCTION_SOFT:
-        *value = reinterpret_cast<void*>(albuf->mCallback);
+        *value = al::bit_cast<void*>(albuf->mCallback);
         break;
     case AL_BUFFER_CALLBACK_USER_PARAM_SOFT:
         *value = albuf->mUserData;
@@ -1526,11 +1529,14 @@ END_API_FUNC
 
 BufferSubList::~BufferSubList()
 {
+    if(!Buffers)
+        return;
+
     uint64_t usemask{~FreeMask};
     while(usemask)
     {
         const int idx{al::countr_zero(usemask)};
-        al::destroy_at(Buffers+idx);
+        std::destroy_at(Buffers+idx);
         usemask &= ~(1_u64 << idx);
     }
     FreeMask = ~usemask;
@@ -1540,8 +1546,7 @@ BufferSubList::~BufferSubList()
 
 
 #ifdef ALSOFT_EAX
-FORCE_ALIGN ALboolean AL_APIENTRY EAXSetBufferMode(ALsizei n, const ALuint* buffers, ALint value)
-START_API_FUNC
+FORCE_ALIGN ALboolean AL_APIENTRY EAXSetBufferMode(ALsizei n, const ALuint *buffers, ALint value) noexcept
 {
 #define EAX_PREFIX "[EAXSetBufferMode] "
 
@@ -1549,43 +1554,79 @@ START_API_FUNC
     if(!context)
     {
         ERR(EAX_PREFIX "%s\n", "No current context.");
-        return ALC_FALSE;
+        return AL_FALSE;
     }
 
     if(!eax_g_is_enabled)
     {
         context->setError(AL_INVALID_OPERATION, EAX_PREFIX "%s", "EAX not enabled.");
-        return ALC_FALSE;
+        return AL_FALSE;
     }
 
     const auto storage = EaxStorageFromEnum(value);
     if(!storage)
     {
         context->setError(AL_INVALID_ENUM, EAX_PREFIX "Unsupported X-RAM mode 0x%x", value);
-        return ALC_FALSE;
+        return AL_FALSE;
     }
 
     if(n == 0)
-        return ALC_TRUE;
+        return AL_TRUE;
 
     if(n < 0)
     {
         context->setError(AL_INVALID_VALUE, EAX_PREFIX "Buffer count %d out of range", n);
-        return ALC_FALSE;
+        return AL_FALSE;
     }
 
     if(!buffers)
     {
         context->setError(AL_INVALID_VALUE, EAX_PREFIX "%s", "Null AL buffers");
-        return ALC_FALSE;
+        return AL_FALSE;
     }
 
     auto device = context->mALDevice.get();
     std::lock_guard<std::mutex> device_lock{device->BufferLock};
-    size_t total_needed{0};
 
-    // Validate the buffers.
-    //
+    /* Special-case setting a single buffer, to avoid extraneous allocations. */
+    if(n == 1)
+    {
+        const auto bufid = buffers[0];
+        if(bufid == AL_NONE)
+            return AL_TRUE;
+
+        const auto buffer = LookupBuffer(device, bufid);
+        if(!buffer) UNLIKELY
+        {
+            ERR(EAX_PREFIX "Invalid buffer ID %u.\n", bufid);
+            return AL_FALSE;
+        }
+
+        /* TODO: Is the store location allowed to change for in-use buffers, or
+         * only when not set/queued on a source?
+         */
+
+        if(*storage == EaxStorage::Hardware)
+        {
+            if(!buffer->eax_x_ram_is_hardware
+                && buffer->OriginalSize > device->eax_x_ram_free_size) UNLIKELY
+            {
+                context->setError(AL_OUT_OF_MEMORY,
+                    EAX_PREFIX "Out of X-RAM memory (need: %u, avail: %u)", buffer->OriginalSize,
+                    device->eax_x_ram_free_size);
+                return AL_FALSE;
+            }
+
+            eax_x_ram_apply(*device, *buffer);
+        }
+        else
+            eax_x_ram_clear(*device, *buffer);
+        buffer->eax_x_ram_mode = *storage;
+        return AL_TRUE;
+    }
+
+    /* Validate the buffers. */
+    std::unordered_set<ALbuffer*> buflist;
     for(auto i = 0;i < n;++i)
     {
         const auto bufid = buffers[i];
@@ -1596,46 +1637,44 @@ START_API_FUNC
         if(!buffer) UNLIKELY
         {
             ERR(EAX_PREFIX "Invalid buffer ID %u.\n", bufid);
-            return ALC_FALSE;
+            return AL_FALSE;
         }
 
         /* TODO: Is the store location allowed to change for in-use buffers, or
          * only when not set/queued on a source?
          */
 
-        if(*storage == EaxStorage::Hardware && !buffer->eax_x_ram_is_hardware)
+        buflist.emplace(buffer);
+    }
+
+    if(*storage == EaxStorage::Hardware)
+    {
+        size_t total_needed{0};
+        for(ALbuffer *buffer : buflist)
         {
-            /* FIXME: This doesn't account for duplicate buffers. When the same
-             * buffer ID is specified multiple times in the provided list, it
-             * counts each instance as more memory that needs to fit in X-RAM.
-             */
-            if(std::numeric_limits<size_t>::max()-buffer->OriginalSize < total_needed) UNLIKELY
+            if(!buffer->eax_x_ram_is_hardware)
             {
-                context->setError(AL_OUT_OF_MEMORY, EAX_PREFIX "Size overflow (%u + %zu)\n",
-                    buffer->OriginalSize, total_needed);
-                return ALC_FALSE;
+                if(std::numeric_limits<size_t>::max()-buffer->OriginalSize < total_needed) UNLIKELY
+                {
+                    context->setError(AL_OUT_OF_MEMORY, EAX_PREFIX "Size overflow (%u + %zu)\n",
+                        buffer->OriginalSize, total_needed);
+                    return AL_FALSE;
+                }
+                total_needed += buffer->OriginalSize;
             }
-            total_needed += buffer->OriginalSize;
+        }
+        if(total_needed > device->eax_x_ram_free_size)
+        {
+            context->setError(AL_OUT_OF_MEMORY,
+                EAX_PREFIX "Out of X-RAM memory (need: %zu, avail: %u)", total_needed,
+                device->eax_x_ram_free_size);
+            return AL_FALSE;
         }
     }
-    if(total_needed > device->eax_x_ram_free_size)
+
+    /* Update the mode. */
+    for(ALbuffer *buffer : buflist)
     {
-        context->setError(AL_OUT_OF_MEMORY,EAX_PREFIX "Out of X-RAM memory (need: %zu, avail: %u)",
-            total_needed, device->eax_x_ram_free_size);
-        return ALC_FALSE;
-    }
-
-    // Update the mode.
-    //
-    for(auto i = 0;i < n;++i)
-    {
-        const auto bufid = buffers[i];
-        if(bufid == AL_NONE)
-            continue;
-
-        const auto buffer = LookupBuffer(device, bufid);
-        assert(buffer);
-
         if(*storage == EaxStorage::Hardware)
             eax_x_ram_apply(*device, *buffer);
         else
@@ -1647,10 +1686,8 @@ START_API_FUNC
 
 #undef EAX_PREFIX
 }
-END_API_FUNC
 
-FORCE_ALIGN ALenum AL_APIENTRY EAXGetBufferMode(ALuint buffer, ALint* pReserved)
-START_API_FUNC
+FORCE_ALIGN ALenum AL_APIENTRY EAXGetBufferMode(ALuint buffer, ALint *pReserved) noexcept
 {
 #define EAX_PREFIX "[EAXGetBufferMode] "
 
@@ -1687,6 +1724,5 @@ START_API_FUNC
 
 #undef EAX_PREFIX
 }
-END_API_FUNC
 
 #endif // ALSOFT_EAX
